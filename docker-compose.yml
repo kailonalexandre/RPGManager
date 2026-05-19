@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rpgmanager-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rpgmanager}
+      POSTGRES_USER: ${POSTGRES_USER:-rpgmanager}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rpgmanager}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rpgmanager} -d ${POSTGRES_DB:-rpgmanager}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    container_name: rpgmanager-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5000
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${POSTGRES_DB:?POSTGRES_DB is required};Username=${POSTGRES_USER:?POSTGRES_USER is required};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      Jwt__Issuer: ${JWT_ISSUER:-RpgManager}
+      Jwt__Audience: ${JWT_AUDIENCE:-RpgManager}
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET is required}
+      Jwt__ExpirationMinutes: ${JWT_EXPIRATION_MINUTES:-120}
+      LocalFileStorage__RootPath: ${LOCAL_FILE_STORAGE_ROOT_PATH:-/app/wwwroot/uploads}
+      LocalFileStorage__PublicBasePath: ${LOCAL_FILE_STORAGE_PUBLIC_BASE_PATH:-/uploads}
+      LocalFileStorage__MaxBytes: ${LOCAL_FILE_STORAGE_MAX_BYTES:-5242880}
+      Open5e__SpellsUrl: ${OPEN5E_SPELLS_URL:-https://api.open5e.com/v2/spells/}
+      Open5e__DocumentKeys: ${OPEN5E_DOCUMENT_KEYS:-srd-2014,srd-2024}
+      Open5e__PageSize: ${OPEN5E_PAGE_SIZE:-100}
+      Open5e__MaxPages: ${OPEN5E_MAX_PAGES:-100}
+      Open5e__TimeoutSeconds: ${OPEN5E_TIMEOUT_SECONDS:-30}
+      Cors__AllowedOrigins__0: ${FRONTEND_URL:-http://localhost:5173}
+      Cors__AllowedOrigins__1: http://localhost:8080
+    ports:
+      - "${API_PORT:-5000}:5000"
+    volumes:
+      - character_uploads:/app/wwwroot/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
+    container_name: rpgmanager-frontend
+    depends_on:
+      - api
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  postgres_data:
+  character_uploads:

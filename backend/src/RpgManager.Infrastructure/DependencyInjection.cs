@@ -1,0 +1,52 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using RpgManager.Application.Auth;
+using RpgManager.Application.Campaigns;
+using RpgManager.Application.Characters;
+using RpgManager.Infrastructure.Auth;
+using RpgManager.Infrastructure.Campaigns;
+using RpgManager.Infrastructure.Characters;
+using RpgManager.Infrastructure.Data;
+using RpgManager.Application.Storage;
+using RpgManager.Infrastructure.Storage;
+using RpgManager.Application.Spells;
+using RpgManager.Infrastructure.Spells;
+using RpgManager.Application.Features;
+using RpgManager.Infrastructure.Features;
+using RpgManager.Application.Dice;
+using RpgManager.Infrastructure.Dice;
+
+namespace RpgManager.Infrastructure;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<LocalFileStorageOptions>(configuration.GetSection(LocalFileStorageOptions.SectionName));
+        services.Configure<Open5eSpellImportOptions>(configuration.GetSection(Open5eSpellImportOptions.SectionName));
+
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ICampaignService, CampaignService>();
+        services.AddScoped<ICharacterService, CharacterService>();
+        services.AddScoped<ISpellService, SpellService>();
+        services.AddScoped<ISpellImportService, SpellImportService>();
+        services.AddScoped<IFeatureService, FeatureService>();
+        services.AddScoped<IDiceService, DiceService>();
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<IFileStorageService, LocalFileStorageService>();
+        services.AddHttpClient<IOpen5eSpellClient, Open5eSpellClient>((serviceProvider, client) =>
+        {
+            var options = serviceProvider
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<Open5eSpellImportOptions>>()
+                .Value;
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(5, options.TimeoutSeconds));
+        });
+
+        return services;
+    }
+}

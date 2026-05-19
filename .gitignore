@@ -1,0 +1,13 @@
+bin/
+obj/
+node_modules/
+dist/
+.env
+.DS_Store
+*.user
+*.suo
+*.swp
+*.log
+
+backend/src/RpgManager.Api/appsettings.Production.json
+frontend/.env

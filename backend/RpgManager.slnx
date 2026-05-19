@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RpgManager.Api/RpgManager.Api.csproj" />
+    <Project Path="src/RpgManager.Application/RpgManager.Application.csproj" />
+    <Project Path="src/RpgManager.Domain/RpgManager.Domain.csproj" />
+    <Project Path="src/RpgManager.Infrastructure/RpgManager.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RpgManager.Infrastructure.Tests/RpgManager.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

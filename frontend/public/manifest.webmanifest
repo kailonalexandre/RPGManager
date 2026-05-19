@@ -1,0 +1,26 @@
+{
+  "name": "RPG Manager",
+  "short_name": "RPG",
+  "description": "Gerenciador de campanhas, fichas, magias e talentos para mesas de RPG.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#059669",
+  "categories": ["games", "productivity"],
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
