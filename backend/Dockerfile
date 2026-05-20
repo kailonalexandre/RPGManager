@@ -10,10 +10,11 @@ COPY tests/RpgManager.Infrastructure.Tests/RpgManager.Infrastructure.Tests.cspro
 
 RUN dotnet restore RpgManager.slnx
 COPY . .
-RUN dotnet publish src/RpgManager.Api/RpgManager.Api.csproj -c Release -o /app/publish
+RUN dotnet publish ./src/RpgManager.Api/RpgManager.Api.csproj -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=build /app/publish .
-EXPOSE 5000
+EXPOSE 8080
 ENTRYPOINT ["dotnet", "RpgManager.Api.dll"]

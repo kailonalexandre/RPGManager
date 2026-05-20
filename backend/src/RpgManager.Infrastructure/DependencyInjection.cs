@@ -27,8 +27,12 @@ public static class DependencyInjection
         services.Configure<LocalFileStorageOptions>(configuration.GetSection(LocalFileStorageOptions.SectionName));
         services.Configure<Open5eSpellImportOptions>(configuration.GetSection(Open5eSpellImportOptions.SectionName));
 
+        var connectionString = DatabaseConnectionStringFactory.FromConfiguration(
+            configuration["DATABASE_URL"],
+            configuration.GetConnectionString("DefaultConnection"));
+
         services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+            options.UseNpgsql(connectionString));
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICampaignService, CampaignService>();
