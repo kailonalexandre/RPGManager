@@ -531,7 +531,10 @@ type AuthContextValue = {
   logout: () => void
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000/api').replace(/\/$/, '')
+const DEFAULT_API_BASE_URL = import.meta.env.PROD
+  ? 'https://rpgmanagerapp-btd7afa0htdde0df.brazilsouth-01.azurewebsites.net/api'
+  : 'http://localhost:5000/api'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, '')
 const API_ORIGIN = new URL(API_BASE_URL).origin
 const TOKEN_KEY = 'rpgmanager.token'
 const THEME_KEY = 'rpgmanager.theme'
