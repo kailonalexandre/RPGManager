@@ -8,7 +8,7 @@ on:
       - master
 
 env:
-  AZURE_WEBAPP_NAME: rpgmanagerapp-btd7afa0htdde0df
+  AZURE_WEBAPP_NAME: RpgManagerApp
   DOTNET_VERSION: '10.0.x'
   API_PROJECT_PATH: './backend/src/RpgManager.Api/RpgManager.Api.csproj'
   PUBLISH_DIR: './publish'

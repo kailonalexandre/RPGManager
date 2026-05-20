@@ -177,7 +177,7 @@ No Render, Railway, Azure ou Fly.io, aponte o serviço para `backend/Dockerfile`
 - Build Command: `cd frontend && npm run build`
 - Output Directory: `frontend/dist`
 - Install Command: `cd frontend && npm ci`
-- Environment Variable: `VITE_API_BASE_URL=https://sua-api-publica.example.com/api`
+- Environment Variable: `VITE_API_BASE_URL=https://rpgmanagerapp-btd7afa0htdde0df.brazilsouth-01.azurewebsites.net/api`
 
 O `vercel.json` na raiz já registra esses comandos para o monorepo.
 
@@ -221,7 +221,7 @@ AllowedOrigins="https://rpg-manager.vercel.app,http://localhost:5173"
 
 8. Checklist pós-deploy:
 
-- Acesse `https://sua-api-publica.example.com/api/health` e confirme `status: ok`.
+- Acesse `https://rpgmanagerapp-btd7afa0htdde0df.brazilsouth-01.azurewebsites.net/api/health` e confirme `status: ok`.
 - Acesse o frontend na Vercel.
 - Faça cadastro/login.
 - Crie uma campanha.
@@ -573,6 +573,75 @@ Teste rápido local:
 
 ```bash
 curl http://localhost:5000/api/health
+```
+
+## Deploy da API no Azure App Service
+
+Este projeto já inclui o workflow `.github/workflows/deploy-api-azure.yml` para publicar a API ASP.NET Core no Azure App Service usando publish profile.
+
+1. Crie o App Service no Azure:
+
+- Runtime stack: .NET 10, se disponível no seu plano/região.
+- Publish: Code.
+- Operating System: Linux ou Windows.
+- App name: `RpgManagerApp`.
+- Default domain: `rpgmanagerapp-btd7afa0htdde0df.brazilsouth-01.azurewebsites.net`.
+
+Se o runtime .NET 10 ainda não estiver disponível no App Service escolhido, use o deploy via container com `backend/Dockerfile`, que expõe a porta interna `8080`.
+
+2. Configure as variáveis no App Service em `Settings > Environment variables`:
+
+```text
+ASPNETCORE_ENVIRONMENT=Production
+DATABASE_URL=postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require
+Jwt__Issuer=RpgManager
+Jwt__Audience=RpgManager
+Jwt__Secret=use-um-segredo-forte-com-32-ou-mais-caracteres
+AllowedOrigins=https://seu-frontend.vercel.app
+LocalFileStorage__RootPath=/home/site/wwwroot/uploads
+LocalFileStorage__PublicBasePath=/uploads
+LocalFileStorage__MaxBytes=5242880
+```
+
+Também é possível usar `ConnectionStrings__DefaultConnection` no lugar de `DATABASE_URL`.
+
+3. Baixe o publish profile:
+
+- No portal do Azure, abra o App Service.
+- Clique em `Get publish profile`.
+- Copie o conteúdo do arquivo baixado.
+
+4. Configure o segredo no GitHub:
+
+- Repositório > `Settings` > `Secrets and variables` > `Actions`.
+- Crie o secret `AZURE_WEBAPP_PUBLISH_PROFILE`.
+- Cole o conteúdo completo do publish profile.
+
+5. Ajuste o nome do App Service no workflow, se necessário:
+
+```yaml
+env:
+  AZURE_WEBAPP_NAME: RpgManagerApp
+```
+
+6. Faça deploy:
+
+```bash
+git add .
+git commit -m "Configure Azure API deploy"
+git push origin main
+```
+
+7. Teste a API publicada:
+
+```bash
+curl https://rpgmanagerapp-btd7afa0htdde0df.brazilsouth-01.azurewebsites.net/api/health
+```
+
+Depois atualize o frontend na Vercel:
+
+```text
+VITE_API_BASE_URL=https://rpgmanagerapp-btd7afa0htdde0df.brazilsouth-01.azurewebsites.net/api
 ```
 
 ## Roadmap Futuro
