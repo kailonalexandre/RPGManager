@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RpgManager.Application.Common;
 using RpgManager.Application.Features;
+using RpgManager.Application.Permissions;
 using RpgManager.Application.Spells;
 using RpgManager.Domain.Entities;
 using RpgManager.Domain.Enums;
@@ -8,7 +9,10 @@ using RpgManager.Infrastructure.Data;
 
 namespace RpgManager.Infrastructure.Features;
 
-public sealed class FeatureService(AppDbContext dbContext) : IFeatureService
+public sealed class FeatureService(
+    AppDbContext dbContext,
+    ICampaignPermissionService campaignPermissionService,
+    IContentVisibilityService contentVisibilityService) : IFeatureService
 {
     public async Task<PagedResponse<FeatureResponse>> GetVisibleAsync(
         Guid userId,
@@ -114,7 +118,7 @@ public sealed class FeatureService(AppDbContext dbContext) : IFeatureService
             return ServiceResult<FeatureResponse>.Failure("Talento/característica não encontrado.", ServiceErrorType.NotFound);
         }
 
-        if (!await CanEditAsync(userId, feature, cancellationToken))
+        if (!await contentVisibilityService.CanEditFeatureAsync(feature.Id, userId, cancellationToken))
         {
             return ServiceResult<FeatureResponse>.Failure("Você não pode editar este conteúdo.", ServiceErrorType.Forbidden);
         }
@@ -144,7 +148,7 @@ public sealed class FeatureService(AppDbContext dbContext) : IFeatureService
             return ServiceResult<bool>.Failure("Talento/característica não encontrado.", ServiceErrorType.NotFound);
         }
 
-        if (!await CanEditAsync(userId, feature, cancellationToken))
+        if (!await contentVisibilityService.CanEditFeatureAsync(feature.Id, userId, cancellationToken))
         {
             return ServiceResult<bool>.Failure("Você não pode excluir este conteúdo.", ServiceErrorType.Forbidden);
         }
@@ -177,21 +181,6 @@ public sealed class FeatureService(AppDbContext dbContext) : IFeatureService
             .SingleOrDefaultAsync(feature => feature.Id == featureId, cancellationToken);
     }
 
-    private async Task<bool> CanEditAsync(Guid userId, Feature feature, CancellationToken cancellationToken)
-    {
-        if (feature.Visibility == SpellVisibility.Private)
-        {
-            return feature.CreatedByUserId == userId;
-        }
-
-        if (feature.Visibility == SpellVisibility.Campaign && feature.CampaignId.HasValue)
-        {
-            return await IsCampaignMasterAsync(userId, feature.CampaignId.Value, cancellationToken);
-        }
-
-        return feature.CreatedByUserId == userId;
-    }
-
     private async Task<ValidationResult?> ValidateAsync(Guid userId, FeatureRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -218,7 +207,7 @@ public sealed class FeatureService(AppDbContext dbContext) : IFeatureService
                 return new ValidationResult("Campanha é obrigatória para conteúdo de campanha.");
             }
 
-            if (!await IsCampaignMasterAsync(userId, request.CampaignId.Value, cancellationToken))
+            if (!await campaignPermissionService.IsCampaignMasterAsync(request.CampaignId.Value, userId, cancellationToken))
             {
                 return new ValidationResult("Apenas Mestre pode criar conteúdo de campanha.", ServiceErrorType.Forbidden);
             }
@@ -230,15 +219,6 @@ public sealed class FeatureService(AppDbContext dbContext) : IFeatureService
         }
 
         return null;
-    }
-
-    private async Task<bool> IsCampaignMasterAsync(Guid userId, Guid campaignId, CancellationToken cancellationToken)
-    {
-        return await dbContext.CampaignMembers.AnyAsync(member =>
-            member.CampaignId == campaignId &&
-            member.UserId == userId &&
-            member.Role == CampaignRole.Master,
-            cancellationToken);
     }
 
     private async Task<IReadOnlyList<Guid>> GetMasterCampaignIdsAsync(Guid userId, CancellationToken cancellationToken)

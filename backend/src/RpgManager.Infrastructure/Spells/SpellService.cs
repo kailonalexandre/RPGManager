@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using RpgManager.Application.Common;
+using RpgManager.Application.Permissions;
 using RpgManager.Application.Spells;
 using RpgManager.Domain.Entities;
 using RpgManager.Domain.Enums;
@@ -7,7 +8,10 @@ using RpgManager.Infrastructure.Data;
 
 namespace RpgManager.Infrastructure.Spells;
 
-public sealed class SpellService(AppDbContext dbContext) : ISpellService
+public sealed class SpellService(
+    AppDbContext dbContext,
+    ICampaignPermissionService campaignPermissionService,
+    IContentVisibilityService contentVisibilityService) : ISpellService
 {
     public async Task<PagedResponse<SpellResponse>> GetVisibleAsync(
         Guid userId,
@@ -142,7 +146,7 @@ public sealed class SpellService(AppDbContext dbContext) : ISpellService
             return ServiceResult<SpellResponse>.Failure("Magia não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!await CanEditAsync(userId, spell, cancellationToken))
+        if (!await contentVisibilityService.CanEditSpellAsync(spell.Id, userId, cancellationToken))
         {
             return ServiceResult<SpellResponse>.Failure("Você não pode editar esta magia.", ServiceErrorType.Forbidden);
         }
@@ -172,7 +176,7 @@ public sealed class SpellService(AppDbContext dbContext) : ISpellService
             return ServiceResult<bool>.Failure("Magia não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!await CanEditAsync(userId, spell, cancellationToken))
+        if (!await contentVisibilityService.CanEditSpellAsync(spell.Id, userId, cancellationToken))
         {
             return ServiceResult<bool>.Failure("Você não pode excluir esta magia.", ServiceErrorType.Forbidden);
         }
@@ -211,21 +215,6 @@ public sealed class SpellService(AppDbContext dbContext) : ISpellService
             .SingleOrDefaultAsync(spell => spell.Id == spellId, cancellationToken);
     }
 
-    private async Task<bool> CanEditAsync(Guid userId, Spell spell, CancellationToken cancellationToken)
-    {
-        if (spell.Visibility == SpellVisibility.Private)
-        {
-            return spell.CreatedByUserId == userId;
-        }
-
-        if (spell.Visibility == SpellVisibility.Campaign && spell.CampaignId.HasValue)
-        {
-            return await IsCampaignMasterAsync(userId, spell.CampaignId.Value, cancellationToken);
-        }
-
-        return spell.CreatedByUserId == userId;
-    }
-
     private async Task<ValidationResult?> ValidateAsync(Guid userId, SpellRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -260,7 +249,7 @@ public sealed class SpellService(AppDbContext dbContext) : ISpellService
                 return new ValidationResult("Campanha é obrigatória para magia de campanha.");
             }
 
-            if (!await IsCampaignMasterAsync(userId, request.CampaignId.Value, cancellationToken))
+            if (!await campaignPermissionService.IsCampaignMasterAsync(request.CampaignId.Value, userId, cancellationToken))
             {
                 return new ValidationResult("Apenas Mestre pode criar magia de campanha.", ServiceErrorType.Forbidden);
             }
@@ -272,15 +261,6 @@ public sealed class SpellService(AppDbContext dbContext) : ISpellService
         }
 
         return null;
-    }
-
-    private async Task<bool> IsCampaignMasterAsync(Guid userId, Guid campaignId, CancellationToken cancellationToken)
-    {
-        return await dbContext.CampaignMembers.AnyAsync(member =>
-            member.CampaignId == campaignId &&
-            member.UserId == userId &&
-            member.Role == CampaignRole.Master,
-            cancellationToken);
     }
 
     private static void Apply(Spell spell, SpellRequest request)

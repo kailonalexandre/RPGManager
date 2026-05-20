@@ -2,13 +2,16 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using RpgManager.Application.Campaigns;
 using RpgManager.Application.Common;
+using RpgManager.Application.Permissions;
 using RpgManager.Domain.Entities;
 using RpgManager.Domain.Enums;
 using RpgManager.Infrastructure.Data;
 
 namespace RpgManager.Infrastructure.Campaigns;
 
-public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
+public sealed class CampaignService(
+    AppDbContext dbContext,
+    ICampaignPermissionService campaignPermissionService) : ICampaignService
 {
     private const string InviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -43,7 +46,7 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             return ServiceResult<CampaignResponse>.Failure("Campanha não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!IsMember(campaign, userId))
+        if (!await campaignPermissionService.CanViewCampaignAsync(campaignId, userId, cancellationToken))
         {
             return ServiceResult<CampaignResponse>.Failure("Você não participa desta campanha.", ServiceErrorType.Forbidden);
         }
@@ -105,7 +108,7 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             return ServiceResult<CampaignResponse>.Failure("Campanha não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!IsMaster(campaign, userId))
+        if (!await campaignPermissionService.CanEditCampaignAsync(campaignId, userId, cancellationToken))
         {
             return ServiceResult<CampaignResponse>.Failure("Apenas Mestre pode editar campanha.", ServiceErrorType.Forbidden);
         }
@@ -131,7 +134,7 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             return ServiceResult<bool>.Failure("Campanha não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!IsMaster(campaign, userId))
+        if (!await campaignPermissionService.CanEditCampaignAsync(campaignId, userId, cancellationToken))
         {
             return ServiceResult<bool>.Failure("Apenas Mestre pode excluir campanha.", ServiceErrorType.Forbidden);
         }
@@ -191,7 +194,7 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             return ServiceResult<CampaignResponse>.Failure("Campanha não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!IsMaster(campaign, userId))
+        if (!await campaignPermissionService.CanEditCampaignAsync(campaignId, userId, cancellationToken))
         {
             return ServiceResult<CampaignResponse>.Failure("Apenas Mestre pode regenerar convite.", ServiceErrorType.Forbidden);
         }
@@ -214,9 +217,9 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             return ServiceResult<IReadOnlyList<CampaignMemberResponse>>.Failure("Campanha não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!IsMember(campaign, userId))
+        if (!await campaignPermissionService.IsCampaignMasterAsync(campaignId, userId, cancellationToken))
         {
-            return ServiceResult<IReadOnlyList<CampaignMemberResponse>>.Failure("Você não participa desta campanha.", ServiceErrorType.Forbidden);
+            return ServiceResult<IReadOnlyList<CampaignMemberResponse>>.Failure("Apenas Mestre pode visualizar membros administrativos.", ServiceErrorType.Forbidden);
         }
 
         return ServiceResult<IReadOnlyList<CampaignMemberResponse>>.Success(ToMemberResponses(campaign.Members));
@@ -233,12 +236,13 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             return ServiceResult<IReadOnlyList<CampaignCharacterSummaryResponse>>.Failure("Campanha não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!IsMember(campaign, userId))
+        if (!await campaignPermissionService.CanViewCampaignAsync(campaignId, userId, cancellationToken))
         {
             return ServiceResult<IReadOnlyList<CampaignCharacterSummaryResponse>>.Failure("Você não participa desta campanha.", ServiceErrorType.Forbidden);
         }
 
-        var characters = await GetCampaignCharactersAsync(campaignId, cancellationToken);
+        var isMaster = await campaignPermissionService.IsCampaignMasterAsync(campaignId, userId, cancellationToken);
+        var characters = await GetCampaignCharactersAsync(campaignId, isMaster ? null : userId, cancellationToken);
         return ServiceResult<IReadOnlyList<CampaignCharacterSummaryResponse>>.Success(characters);
     }
 
@@ -253,12 +257,12 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             return ServiceResult<CampaignMasterDashboardResponse>.Failure("Campanha não encontrada.", ServiceErrorType.NotFound);
         }
 
-        if (!IsMaster(campaign, userId))
+        if (!await campaignPermissionService.IsCampaignMasterAsync(campaignId, userId, cancellationToken))
         {
             return ServiceResult<CampaignMasterDashboardResponse>.Failure("Apenas Mestre pode acessar painel completo.", ServiceErrorType.Forbidden);
         }
 
-        var characters = await GetCampaignCharactersAsync(campaignId, cancellationToken);
+        var characters = await GetCampaignCharactersAsync(campaignId, null, cancellationToken);
         var notes = await dbContext.CharacterNotes
             .AsNoTracking()
             .Include(note => note.Character)
@@ -300,13 +304,15 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
 
     private async Task<IReadOnlyList<CampaignCharacterSummaryResponse>> GetCampaignCharactersAsync(
         Guid campaignId,
+        Guid? userId,
         CancellationToken cancellationToken)
     {
         var characters = await dbContext.Characters
             .AsNoTracking()
             .Include(character => character.User)
             .Include(character => character.Skills)
-            .Where(character => character.CampaignId == campaignId)
+            .Where(character => character.CampaignId == campaignId &&
+                (!userId.HasValue || character.UserId == userId.Value))
             .OrderBy(character => character.Name)
             .ToListAsync(cancellationToken);
 
@@ -390,7 +396,8 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             .Single(member => member.UserId == currentUserId)
             .Role;
 
-        var members = ToMemberResponses(campaign.Members);
+        var isMaster = currentUserRole == CampaignRole.Master;
+        var members = ToMemberResponses(campaign.Members, includeAdministrativeInfo: isMaster);
 
         return new CampaignResponse(
             campaign.Id,
@@ -398,7 +405,7 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             campaign.Description,
             campaign.System,
             campaign.CoverImageUrl,
-            campaign.InviteCode,
+            isMaster ? campaign.InviteCode : string.Empty,
             campaign.CreatedByUserId,
             campaign.CreatedAt,
             campaign.UpdatedAt,
@@ -406,7 +413,9 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
             members);
     }
 
-    private static List<CampaignMemberResponse> ToMemberResponses(IEnumerable<CampaignMember> members)
+    private static List<CampaignMemberResponse> ToMemberResponses(
+        IEnumerable<CampaignMember> members,
+        bool includeAdministrativeInfo = true)
     {
         return members
             .OrderBy(member => member.Role == CampaignRole.Master ? 0 : 1)
@@ -415,9 +424,9 @@ public sealed class CampaignService(AppDbContext dbContext) : ICampaignService
                 member.Id,
                 member.UserId,
                 member.User.Name,
-                member.User.Email,
+                includeAdministrativeInfo ? member.User.Email : string.Empty,
                 member.Role,
-                member.JoinedAt))
+                includeAdministrativeInfo ? member.JoinedAt : default))
             .ToList();
     }
 

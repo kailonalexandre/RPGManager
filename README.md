@@ -46,6 +46,26 @@ Persistência:
 - EF Core migrations versionadas em `backend/src/RpgManager.Infrastructure/Data/Migrations`.
 - Migrations são aplicadas automaticamente ao iniciar a API.
 
+## Permissões e visibilidade
+
+As permissões de campanha são calculadas por campanha. Um usuário pode ser `Master` em uma campanha e `Player` em outra.
+
+- Campanhas aparecem apenas para membros. Apenas `Master` edita, exclui, regenera convite, acessa painel do mestre e visualiza informações administrativas de membros.
+- `Player` visualiza somente informações básicas da campanha. Código de convite, e-mails de membros e datas administrativas não são retornados para `Player`.
+- Personagens sem campanha são acessíveis apenas pelo dono. Personagens vinculados a campanha são visíveis ao dono e ao `Master` da campanha; `Master` abre ficha em modo leitura e não edita personagens dos jogadores.
+- Listagens de personagens não retornam fichas de outros jogadores para `Player`. Listagens de campanha retornam todos os personagens apenas para `Master`; para `Player`, retornam somente os próprios.
+- Notas privadas sempre vencem: apenas o dono do personagem vê. Nota não privada marcada como visível para o mestre aparece para o `Master` da campanha. Outros jogadores não veem notas.
+- Conteúdos com visibilidade `Private` aparecem apenas para o criador. `Campaign` aparece apenas para membros da campanha e só pode ser criado/editado por `Master`. `LocalPublic` aparece para qualquer usuário autenticado.
+- O backend usa o usuário autenticado pelo JWT para definir dono e autorizar operações. O frontend apenas reflete permissões, escondendo ações indevidas e exibindo acesso negado quando necessário.
+
+Checklist mínimo de validação:
+
+- Usuário A cria campanha como `Master`; usuário B entra como `Player`; usuário C fica fora da campanha.
+- B cria personagem na campanha. A visualiza a ficha em leitura; A não edita; C não acessa.
+- B não edita campanha, não regenera convite e não acessa painel do mestre.
+- B cria nota privada: A não vê. B cria nota visível ao mestre: A vê.
+- Spell privada de A não aparece para B. Spell de campanha aparece apenas para membros. `LocalPublic` aparece para todos autenticados.
+
 ## Estrutura de Pastas
 
 ```text

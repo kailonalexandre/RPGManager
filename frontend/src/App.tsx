@@ -547,6 +547,17 @@ const navigation = [
   { label: 'Talentos', path: '/features', icon: Sparkles },
 ]
 
+const baseVisibilityOptions: [string, string][] = [
+  ['Private', 'Privada'],
+  ['LocalPublic', 'Pública local'],
+]
+
+function contentVisibilityOptions(canCreateCampaignContent: boolean): [string, string][] {
+  return canCreateCampaignContent
+    ? [['Private', 'Privada'], ['Campaign', 'Campanha'], ['LocalPublic', 'Pública local']]
+    : baseVisibilityOptions
+}
+
 function apiUrl(path: string) {
   const normalizedPath = path.startsWith('/api/') ? path.slice(4) : path
   return `${API_BASE_URL}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`
@@ -1155,6 +1166,7 @@ function CampaignFormPage({ auth }: { auth: AuthContextValue }) {
   const [isLoading, setIsLoading] = useState(isEditing)
   const [isSaving, setIsSaving] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
+  const [canEdit, setCanEdit] = useState(!isEditing)
 
   useEffect(() => {
     if (!id) {
@@ -1170,6 +1182,7 @@ function CampaignFormPage({ auth }: { auth: AuthContextValue }) {
           coverImageUrl: campaign.coverImageUrl ?? '',
         })
         setCanDelete(campaign.currentUserRole === 'Master')
+        setCanEdit(campaign.currentUserRole === 'Master')
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Erro ao carregar campanha.'))
       .finally(() => setIsLoading(false))
@@ -1226,6 +1239,8 @@ function CampaignFormPage({ auth }: { auth: AuthContextValue }) {
 
       {isLoading ? (
         <PanelText>Carregando campanha...</PanelText>
+      ) : !canEdit ? (
+        <AccessDenied backTo={`/campaigns/${id}`} />
       ) : (
         <form
           className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"
@@ -1454,13 +1469,15 @@ function CampaignDetailPage({ auth }: { auth: AuthContextValue }) {
           </section>
 
           <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <h3 className="text-lg font-semibold">Membros</h3>
+            <h3 className="text-lg font-semibold">{isMaster ? 'Membros' : 'Membros públicos'}</h3>
             <div className="mt-4 divide-y divide-slate-200 dark:divide-slate-800">
               {campaign.members.map((member) => (
                 <div className="flex items-center justify-between gap-3 py-3" key={member.id}>
                   <div className="min-w-0">
                     <p className="truncate font-medium">{member.userName}</p>
-                    <p className="truncate text-sm text-slate-500 dark:text-slate-400">{member.email}</p>
+                    {isMaster && (
+                      <p className="truncate text-sm text-slate-500 dark:text-slate-400">{member.email}</p>
+                    )}
                   </div>
                   <RoleBadge role={member.role} />
                 </div>
@@ -1673,6 +1690,7 @@ function CharacterFormPage({ auth }: { auth: AuthContextValue }) {
   const [isLoading, setIsLoading] = useState(isEditing)
   const [isSaving, setIsSaving] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
+  const [canEdit, setCanEdit] = useState(!isEditing)
 
   useEffect(() => {
     apiRequest<CampaignSummaryResponse[]>('/api/campaigns', auth.token)
@@ -1689,6 +1707,7 @@ function CharacterFormPage({ auth }: { auth: AuthContextValue }) {
       .then((character) => {
         setPayload(toCharacterPayload(character))
         setCanDelete(character.canEdit)
+        setCanEdit(character.canEdit)
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Erro ao carregar personagem.'))
       .finally(() => setIsLoading(false))
@@ -1749,6 +1768,8 @@ function CharacterFormPage({ auth }: { auth: AuthContextValue }) {
 
       {isLoading ? (
         <PanelText>Carregando personagem...</PanelText>
+      ) : !canEdit ? (
+        <AccessDenied backTo={`/characters/${id}`} />
       ) : (
         <form
           className="space-y-5 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"
@@ -3274,7 +3295,7 @@ function CharacterNotebookSection({
         <div>
           <h3 className="text-xl font-semibold">Notebook</h3>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            Diário, pistas, NPCs, lugares e ideias do personagem.
+            Diário, pistas, NPCs, lugares e ideias do personagem. Nota privada só você vê; nota visível para o mestre pode ser lida pelo mestre da campanha.
           </p>
         </div>
         {character.canEdit && (
@@ -5153,6 +5174,7 @@ function SpellsPage({ auth }: { auth: AuthContextValue }) {
   })
 
   const masterCampaigns = campaigns.filter((campaign) => campaign.currentUserRole === 'Master')
+  const visibilityOptions = contentVisibilityOptions(masterCampaigns.length > 0)
 
   useEffect(() => {
     apiRequest<CampaignSummaryResponse[]>('/api/campaigns', auth.token)
@@ -5193,7 +5215,8 @@ function SpellsPage({ auth }: { auth: AuthContextValue }) {
   function startNewSpell(example?: SpellPayload) {
     setEditingSpellId(null)
     setSelectedSpell(null)
-    setDraft({ ...(example ?? emptySpellPayload) })
+    const next = { ...(example ?? emptySpellPayload) }
+    setDraft(masterCampaigns.length > 0 ? next : { ...next, visibility: next.visibility === 'Campaign' ? 'Private' : next.visibility, campaignId: null })
     setMessage('')
     setIsSpellFormOpen(true)
   }
@@ -5523,7 +5546,7 @@ function SpellsPage({ auth }: { auth: AuthContextValue }) {
                   <SimpleSelect
                     label="Visibilidade"
                     onChange={(value) => patchDraft({ visibility: value as SpellVisibility })}
-                    options={[['Private', 'Privada'], ['Campaign', 'Campanha'], ['LocalPublic', 'Pública local']]}
+                    options={visibilityOptions}
                     value={draft.visibility}
                   />
                   {draft.visibility === 'Campaign' && (
@@ -5765,6 +5788,7 @@ function FeaturesPage({ auth }: { auth: AuthContextValue }) {
   })
 
   const masterCampaigns = campaigns.filter((campaign) => campaign.currentUserRole === 'Master')
+  const visibilityOptions = contentVisibilityOptions(masterCampaigns.length > 0)
 
   useEffect(() => {
     apiRequest<CampaignSummaryResponse[]>('/api/campaigns', auth.token)
@@ -5804,7 +5828,8 @@ function FeaturesPage({ auth }: { auth: AuthContextValue }) {
   function startNewFeature(example?: FeaturePayload) {
     setEditingFeatureId(null)
     setSelectedFeature(null)
-    setDraft({ ...(example ?? emptyFeaturePayload) })
+    const next = { ...(example ?? emptyFeaturePayload) }
+    setDraft(masterCampaigns.length > 0 ? next : { ...next, visibility: next.visibility === 'Campaign' ? 'Private' : next.visibility, campaignId: null })
     setMessage('')
     setIsFormOpen(true)
   }
@@ -5989,7 +6014,7 @@ function FeaturesPage({ auth }: { auth: AuthContextValue }) {
                   <input checked={draft.isHomebrew} className="size-4" onChange={(event) => patchDraft({ isHomebrew: event.target.checked })} type="checkbox" />
                   Homebrew
                 </label>
-                <SimpleSelect label="Visibilidade" onChange={(value) => patchDraft({ visibility: value as SpellVisibility })} options={[['Private', 'Privada'], ['Campaign', 'Campanha'], ['LocalPublic', 'Pública local']]} value={draft.visibility} />
+                <SimpleSelect label="Visibilidade" onChange={(value) => patchDraft({ visibility: value as SpellVisibility })} options={visibilityOptions} value={draft.visibility} />
                 {draft.visibility === 'Campaign' && (
                   <label className="block">
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Campanha</span>
@@ -6234,6 +6259,28 @@ function PanelText({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto max-w-6xl rounded-lg border border-slate-200 bg-white p-4 text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 sm:p-6">
       {children}
+    </div>
+  )
+}
+
+function AccessDenied({ backTo }: { backTo: string }) {
+  return (
+    <div className="space-y-4">
+      <PanelText>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-950 dark:text-white">Acesso negado</h3>
+            <p className="mt-1 text-sm">Você não tem permissão para editar este recurso.</p>
+          </div>
+          <Link
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+            to={backTo}
+          >
+            <ArrowLeft size={17} />
+            Voltar
+          </Link>
+        </div>
+      </PanelText>
     </div>
   )
 }

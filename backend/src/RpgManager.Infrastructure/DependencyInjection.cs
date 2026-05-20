@@ -16,6 +16,8 @@ using RpgManager.Application.Features;
 using RpgManager.Infrastructure.Features;
 using RpgManager.Application.Dice;
 using RpgManager.Infrastructure.Dice;
+using RpgManager.Application.Permissions;
+using RpgManager.Infrastructure.Permissions;
 
 namespace RpgManager.Infrastructure;
 
@@ -35,6 +37,9 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString));
 
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ICampaignPermissionService, CampaignPermissionService>();
+        services.AddScoped<ICharacterPermissionService, CharacterPermissionService>();
+        services.AddScoped<IContentVisibilityService, ContentVisibilityService>();
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<ICharacterService, CharacterService>();
         services.AddScoped<ISpellService, SpellService>();

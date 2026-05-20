@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RpgManager.Application.Characters;
 using RpgManager.Application.Common;
+using RpgManager.Application.Permissions;
 using RpgManager.Application.Storage;
 using RpgManager.Domain.Entities;
 using RpgManager.Domain.Enums;
@@ -8,7 +9,11 @@ using RpgManager.Infrastructure.Data;
 
 namespace RpgManager.Infrastructure.Characters;
 
-public sealed class CharacterService(AppDbContext dbContext, IFileStorageService fileStorageService) : ICharacterService
+public sealed class CharacterService(
+    AppDbContext dbContext,
+    IFileStorageService fileStorageService,
+    ICharacterPermissionService characterPermissionService,
+    IContentVisibilityService contentVisibilityService) : ICharacterService
 {
     private static readonly IReadOnlyList<SkillDefinition> SkillDefinitions =
     [
@@ -1594,61 +1599,14 @@ public sealed class CharacterService(AppDbContext dbContext, IFileStorageService
             return true;
         }
 
-        if (!character.CampaignId.HasValue)
-        {
-            return false;
-        }
-
-        return await dbContext.CampaignMembers.AnyAsync(
-            member => member.CampaignId == character.CampaignId.Value
-                && member.UserId == userId
-                && member.Role == CampaignRole.Master,
-            cancellationToken);
+        return await characterPermissionService.CanViewCharacterAsync(character.Id, userId, cancellationToken);
     }
 
     private async Task<bool> CanViewSpellAsync(Guid userId, Spell spell, CancellationToken cancellationToken)
-    {
-        if (spell.Visibility == SpellVisibility.LocalPublic)
-        {
-            return true;
-        }
-
-        if (spell.Visibility == SpellVisibility.Private)
-        {
-            return spell.CreatedByUserId == userId;
-        }
-
-        if (!spell.CampaignId.HasValue)
-        {
-            return false;
-        }
-
-        return await dbContext.CampaignMembers.AnyAsync(member =>
-            member.CampaignId == spell.CampaignId.Value && member.UserId == userId,
-            cancellationToken);
-    }
+        => await contentVisibilityService.CanViewSpellAsync(spell.Id, userId, cancellationToken);
 
     private async Task<bool> CanViewFeatureAsync(Guid userId, Feature feature, CancellationToken cancellationToken)
-    {
-        if (feature.Visibility == SpellVisibility.LocalPublic)
-        {
-            return true;
-        }
-
-        if (feature.Visibility == SpellVisibility.Private)
-        {
-            return feature.CreatedByUserId == userId;
-        }
-
-        if (!feature.CampaignId.HasValue)
-        {
-            return false;
-        }
-
-        return await dbContext.CampaignMembers.AnyAsync(member =>
-            member.CampaignId == feature.CampaignId.Value && member.UserId == userId,
-            cancellationToken);
-    }
+        => await contentVisibilityService.CanViewFeatureAsync(feature.Id, userId, cancellationToken);
 
     private async Task<ValidationError?> ValidateRequestAsync(
         Guid userId,
