@@ -1573,6 +1573,9 @@ public sealed class CharacterService(
     {
         return await dbContext.Characters
             .Include(character => character.Campaign)
+            .Include(character => character.Race)
+            .Include(character => character.Class)
+            .Include(character => character.BackgroundOption)
             .SingleOrDefaultAsync(character => character.Id == characterId, cancellationToken);
     }
 
@@ -1635,6 +1638,24 @@ public sealed class CharacterService(
             }
         }
 
+        if (request.RaceId.HasValue &&
+            !await dbContext.Races.AnyAsync(race => race.Id == request.RaceId.Value, cancellationToken))
+        {
+            return new ValidationError("Raça selecionada não encontrada.", ServiceErrorType.NotFound);
+        }
+
+        if (request.ClassId.HasValue &&
+            !await dbContext.CharacterClasses.AnyAsync(characterClass => characterClass.Id == request.ClassId.Value, cancellationToken))
+        {
+            return new ValidationError("Classe selecionada não encontrada.", ServiceErrorType.NotFound);
+        }
+
+        if (request.BackgroundId.HasValue &&
+            !await dbContext.Backgrounds.AnyAsync(background => background.Id == request.BackgroundId.Value, cancellationToken))
+        {
+            return new ValidationError("Antecedente selecionado não encontrado.", ServiceErrorType.NotFound);
+        }
+
         if (request.TotalLevel < 1 || request.TotalLevel > 20)
         {
             return new ValidationError("Nível total deve ficar entre 1 e 20.");
@@ -1664,9 +1685,12 @@ public sealed class CharacterService(
         character.AvatarUrl = NormalizeOptional(request.AvatarUrl);
         character.TokenImageUrl = NormalizeOptional(request.TokenImageUrl);
         character.TotalLevel = request.TotalLevel;
+        character.RaceId = request.RaceId;
         character.Species = NormalizeRequired(request.Species);
+        character.ClassId = request.ClassId;
         character.MainClass = NormalizeRequired(request.MainClass);
         character.Subclass = NormalizeRequired(request.Subclass);
+        character.BackgroundId = request.BackgroundId;
         character.Background = NormalizeRequired(request.Background);
         character.Alignment = NormalizeRequired(request.Alignment);
         character.Experience = request.Experience;
@@ -1702,9 +1726,15 @@ public sealed class CharacterService(
             character.TokenImageUrl,
             character.TotalLevel,
             character.Species,
+            character.RaceId,
+            character.Race?.Name,
             character.MainClass,
+            character.ClassId,
+            character.Class?.Name,
             character.Subclass,
             character.Background,
+            character.BackgroundId,
+            character.BackgroundOption?.Name,
             character.Alignment,
             character.Experience,
             character.Inspiration,

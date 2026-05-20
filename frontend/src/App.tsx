@@ -170,9 +170,15 @@ type CharacterPayload = {
   tokenImageUrl?: string | null
   totalLevel: number
   species: string
+  raceId?: string | null
+  raceName?: string | null
   mainClass: string
+  classId?: string | null
+  className?: string | null
   subclass: string
   background: string
+  backgroundId?: string | null
+  backgroundName?: string | null
   alignment: string
   experience: number
   inspiration: boolean
@@ -391,6 +397,60 @@ type CharacterSpellSlotResponse = {
 }
 
 type SpellVisibility = 'Private' | 'Campaign' | 'LocalPublic'
+type Visibility = 'Private' | 'Campaign' | 'MasterOnly' | 'PlayerOnly' | 'PublicToPlayers'
+type ExternalProvider = 'None' | 'Notion' | 'Obsidian'
+
+type CampaignNotePayload = {
+  title: string
+  contentMarkdown: string
+  tags: string
+  visibility?: Visibility | null
+  linkedEntityType?: string | null
+  linkedEntityId?: string | null
+  externalProvider: ExternalProvider
+  externalId?: string | null
+}
+
+type CampaignNoteResponse = CampaignNotePayload & {
+  id: string
+  campaignId: string
+  ownerUserId: string
+  ownerUserName: string
+  visibility: Visibility
+  createdAt: string
+  updatedAt?: string | null
+  canEdit: boolean
+}
+
+type NpcPayload = {
+  name: string
+  alias: string
+  race: string
+  occupation: string
+  location: string
+  faction: string
+  personality: string
+  appearance: string
+  motivation: string
+  secrets: string
+  notes: string
+  statBlockJson: string
+  tags: string
+  isImportant: boolean
+  isAlive: boolean
+  visibility: Visibility
+}
+
+type NpcResponse = NpcPayload & {
+  id: string
+  campaignId: string
+  createdByUserId: string
+  createdByUserName: string
+  secrets?: string | null
+  createdAt: string
+  updatedAt?: string | null
+  canEdit: boolean
+}
 
 type SpellPayload = {
   name: string
@@ -521,6 +581,31 @@ type CharacterPdfData = {
   spells: CharacterSpellResponse[]
   features: CharacterFeatureResponse[]
   inventory: CharacterInventoryItemResponse[]
+}
+
+type RaceResponse = {
+  id: string
+  name: string
+  description: string
+  source: string
+  isHomebrew: boolean
+}
+
+type CharacterClassOptionResponse = {
+  id: string
+  name: string
+  hitDie: number
+  description: string
+  source: string
+  isHomebrew: boolean
+}
+
+type BackgroundResponse = {
+  id: string
+  name: string
+  description: string
+  source: string
+  isHomebrew: boolean
 }
 
 type AuthContextValue = {
@@ -1302,7 +1387,7 @@ function CampaignFormPage({ auth }: { auth: AuthContextValue }) {
 function CampaignDetailPage({ auth }: { auth: AuthContextValue }) {
   const { id } = useParams()
   const [campaign, setCampaign] = useState<CampaignResponse | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'master'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'npcs' | 'master'>('overview')
   const [dashboard, setDashboard] = useState<CampaignMasterDashboardResponse | null>(null)
   const [message, setMessage] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -1418,6 +1503,12 @@ function CampaignDetailPage({ auth }: { auth: AuthContextValue }) {
         <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
           Visão Geral
         </TabButton>
+        <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')}>
+          Notas
+        </TabButton>
+        <TabButton active={activeTab === 'npcs'} onClick={() => setActiveTab('npcs')}>
+          NPCs
+        </TabButton>
         {isMaster && (
           <TabButton active={activeTab === 'master'} onClick={() => setActiveTab('master')}>
             Painel do Mestre
@@ -1427,6 +1518,10 @@ function CampaignDetailPage({ auth }: { auth: AuthContextValue }) {
 
       {activeTab === 'master' && isMaster ? (
         <CampaignMasterDashboard dashboard={dashboard} isLoading={isDashboardLoading} />
+      ) : activeTab === 'notes' ? (
+        <CampaignNotesPanel auth={auth} campaign={campaign} />
+      ) : activeTab === 'npcs' ? (
+        <NpcsPanel auth={auth} campaign={campaign} />
       ) : (
         <>
           <section className="grid gap-4 lg:grid-cols-[1fr_320px]">
@@ -1488,6 +1583,560 @@ function CampaignDetailPage({ auth }: { auth: AuthContextValue }) {
       )}
     </div>
   )
+}
+
+const emptyCampaignNotePayload: CampaignNotePayload = {
+  title: '',
+  contentMarkdown: '',
+  tags: '',
+  visibility: null,
+  linkedEntityType: '',
+  linkedEntityId: null,
+  externalProvider: 'None',
+  externalId: '',
+}
+
+function CampaignNotesPanel({ auth, campaign }: { auth: AuthContextValue; campaign: CampaignResponse }) {
+  const isMaster = campaign.currentUserRole === 'Master'
+  const [notes, setNotes] = useState<CampaignNoteResponse[]>([])
+  const [selectedNote, setSelectedNote] = useState<CampaignNoteResponse | null>(null)
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<CampaignNotePayload>(() => ({
+    ...emptyCampaignNotePayload,
+    visibility: isMaster ? 'MasterOnly' : 'Private',
+  }))
+  const [filters, setFilters] = useState({ search: '', tag: '', visibility: '' })
+  const [message, setMessage] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    loadNotes()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.token, campaign.id])
+
+  async function loadNotes(nextFilters = filters) {
+    setIsLoading(true)
+    setMessage('')
+
+    const query = new URLSearchParams()
+    Object.entries(nextFilters).forEach(([key, value]) => {
+      if (value) {
+        query.set(key, value)
+      }
+    })
+
+    try {
+      setNotes(await apiRequest<CampaignNoteResponse[]>(`/api/campaigns/${campaign.id}/notes?${query.toString()}`, auth.token))
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Erro ao carregar notas.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  function startNewNote() {
+    setSelectedNote(null)
+    setEditingNoteId(null)
+    setDraft({
+      ...emptyCampaignNotePayload,
+      visibility: isMaster ? 'MasterOnly' : 'Private',
+    })
+    setMessage('')
+  }
+
+  function startEditNote(note: CampaignNoteResponse) {
+    setSelectedNote(note)
+    setEditingNoteId(note.id)
+    setDraft(toCampaignNotePayload(note))
+    setMessage('')
+  }
+
+  function patchDraft(patch: Partial<CampaignNotePayload>) {
+    setDraft((current) => ({ ...current, ...patch }))
+  }
+
+  function updateFilter(key: keyof typeof filters, value: string) {
+    setFilters((current) => ({ ...current, [key]: value }))
+  }
+
+  async function saveNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsSaving(true)
+    setMessage('')
+
+    try {
+      const saved = await apiRequest<CampaignNoteResponse>(
+        editingNoteId
+          ? `/api/campaigns/${campaign.id}/notes/${editingNoteId}`
+          : `/api/campaigns/${campaign.id}/notes`,
+        auth.token,
+        {
+          method: editingNoteId ? 'PUT' : 'POST',
+          body: JSON.stringify(normalizeCampaignNotePayload(draft)),
+        },
+      )
+      setSelectedNote(saved)
+      setEditingNoteId(null)
+      setDraft({
+        ...emptyCampaignNotePayload,
+        visibility: isMaster ? 'MasterOnly' : 'Private',
+      })
+      await loadNotes()
+      setMessage('Nota salva.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Erro ao salvar nota.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function deleteNote(noteId: string) {
+    setIsSaving(true)
+    setMessage('')
+
+    try {
+      await apiRequest<null>(`/api/campaigns/${campaign.id}/notes/${noteId}`, auth.token, { method: 'DELETE' })
+      setSelectedNote(null)
+      setEditingNoteId(null)
+      await loadNotes()
+      setMessage('Nota excluída.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Erro ao excluir nota.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const visibilityOptions: [string, string][] = isMaster
+    ? [
+        ['MasterOnly', 'Só mestre'],
+        ['PublicToPlayers', 'Publicada para jogadores'],
+        ['Private', 'Privada'],
+        ['Campaign', 'Campanha'],
+      ]
+    : [['Private', 'Privada']]
+
+  return (
+    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="space-y-4">
+        <form
+          className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:grid-cols-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            loadNotes(filters)
+          }}
+        >
+          <TextField label="Busca" onChange={(value) => updateFilter('search', value)} value={filters.search} />
+          <TextField label="Tag" onChange={(value) => updateFilter('tag', value)} value={filters.tag} />
+          <SimpleSelect
+            label="Visibilidade"
+            onChange={(value) => updateFilter('visibility', value)}
+            options={[['', 'Todas'], ...visibilityOptions]}
+            value={filters.visibility}
+          />
+          <button className="self-end rounded-md border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200" type="submit">
+            Filtrar
+          </button>
+        </form>
+
+        {message && <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">{message}</p>}
+
+        {isLoading ? (
+          <PanelText>Carregando notas...</PanelText>
+        ) : notes.length === 0 ? (
+          <PanelText>Nenhuma nota encontrada.</PanelText>
+        ) : (
+          <div className="grid gap-3">
+            {notes.map((note) => (
+              <button
+                className="rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-700"
+                key={note.id}
+                onClick={() => setSelectedNote(note)}
+                type="button"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">{note.title}</h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{note.ownerUserName}</p>
+                  </div>
+                  <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {campaignNoteVisibilityLabel(note.visibility)}
+                  </span>
+                </div>
+                <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  {note.contentMarkdown || 'Sem conteúdo.'}
+                </p>
+                {note.tags && <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{note.tags}</p>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <aside className="space-y-4">
+        {selectedNote && !editingNoteId && (
+          <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold uppercase text-emerald-700 dark:text-emerald-400">
+                  {campaignNoteVisibilityLabel(selectedNote.visibility)}
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold">{selectedNote.title}</h3>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{selectedNote.ownerUserName}</p>
+              </div>
+              {selectedNote.canEdit && (
+                <div className="flex gap-2">
+                  <button className="rounded-md border border-slate-300 p-2 dark:border-slate-700" onClick={() => startEditNote(selectedNote)} type="button" aria-label="Editar nota">
+                    <Edit size={17} />
+                  </button>
+                  <button className="rounded-md border border-red-300 p-2 text-red-700 dark:border-red-900 dark:text-red-300" onClick={() => deleteNote(selectedNote.id)} type="button" aria-label="Excluir nota">
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+              )}
+            </div>
+            <TextBlock label="Conteúdo" value={selectedNote.contentMarkdown} />
+            {selectedNote.tags && <InfoRow label="Tags" value={selectedNote.tags} />}
+          </div>
+        )}
+
+        <form className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900" onSubmit={saveNote}>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold">{editingNoteId ? 'Editar nota' : 'Nova nota'}</h3>
+            <button className="text-sm font-medium text-slate-500 dark:text-slate-400" onClick={startNewNote} type="button">
+              Limpar
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3">
+            <TextField label="Título" onChange={(value) => patchDraft({ title: value })} required value={draft.title} />
+            <TextField label="Tags" onChange={(value) => patchDraft({ tags: value })} value={draft.tags} />
+            <SimpleSelect
+              label="Visibilidade"
+              onChange={(value) => patchDraft({ visibility: value as Visibility })}
+              options={visibilityOptions}
+              value={draft.visibility ?? (isMaster ? 'MasterOnly' : 'Private')}
+            />
+            <TextAreaField label="Markdown" onChange={(value) => patchDraft({ contentMarkdown: value })} value={draft.contentMarkdown} />
+            <button className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:bg-slate-400" disabled={isSaving} type="submit">
+              <Plus size={18} />
+              {isSaving ? 'Salvando...' : 'Salvar nota'}
+            </button>
+          </div>
+        </form>
+      </aside>
+    </section>
+  )
+}
+
+function toCampaignNotePayload(note: CampaignNoteResponse): CampaignNotePayload {
+  return {
+    title: note.title,
+    contentMarkdown: note.contentMarkdown,
+    tags: note.tags,
+    visibility: note.visibility,
+    linkedEntityType: note.linkedEntityType ?? '',
+    linkedEntityId: note.linkedEntityId ?? null,
+    externalProvider: note.externalProvider,
+    externalId: note.externalId ?? '',
+  }
+}
+
+function normalizeCampaignNotePayload(payload: CampaignNotePayload): CampaignNotePayload {
+  return {
+    ...payload,
+    linkedEntityType: payload.linkedEntityType || null,
+    linkedEntityId: payload.linkedEntityId || null,
+    externalProvider: payload.externalProvider || 'None',
+    externalId: payload.externalId || null,
+  }
+}
+
+const emptyNpcPayload: NpcPayload = {
+  name: '',
+  alias: '',
+  race: '',
+  occupation: '',
+  location: '',
+  faction: '',
+  personality: '',
+  appearance: '',
+  motivation: '',
+  secrets: '',
+  notes: '',
+  statBlockJson: '',
+  tags: '',
+  isImportant: false,
+  isAlive: true,
+  visibility: 'MasterOnly',
+}
+
+function NpcsPanel({ auth, campaign }: { auth: AuthContextValue; campaign: CampaignResponse }) {
+  const isMaster = campaign.currentUserRole === 'Master'
+  const [npcs, setNpcs] = useState<NpcResponse[]>([])
+  const [selectedNpc, setSelectedNpc] = useState<NpcResponse | null>(null)
+  const [editingNpcId, setEditingNpcId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<NpcPayload>(emptyNpcPayload)
+  const [filters, setFilters] = useState({ search: '', tag: '', location: '', faction: '', visibility: '' })
+  const [message, setMessage] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    loadNpcs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.token, campaign.id])
+
+  async function loadNpcs(nextFilters = filters) {
+    setIsLoading(true)
+    setMessage('')
+
+    const query = new URLSearchParams()
+    Object.entries(nextFilters).forEach(([key, value]) => {
+      if (value) {
+        query.set(key, value)
+      }
+    })
+
+    try {
+      setNpcs(await apiRequest<NpcResponse[]>(`/api/campaigns/${campaign.id}/npcs?${query.toString()}`, auth.token))
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Erro ao carregar NPCs.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  function updateFilter(key: keyof typeof filters, value: string) {
+    setFilters((current) => ({ ...current, [key]: value }))
+  }
+
+  function patchDraft(patch: Partial<NpcPayload>) {
+    setDraft((current) => ({ ...current, ...patch }))
+  }
+
+  function startNewNpc() {
+    setSelectedNpc(null)
+    setEditingNpcId(null)
+    setDraft(emptyNpcPayload)
+    setMessage('')
+  }
+
+  function startEditNpc(npc: NpcResponse) {
+    setSelectedNpc(npc)
+    setEditingNpcId(npc.id)
+    setDraft(toNpcPayload(npc))
+    setMessage('')
+  }
+
+  async function saveNpc(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!isMaster) {
+      return
+    }
+
+    setIsSaving(true)
+    setMessage('')
+
+    try {
+      const saved = await apiRequest<NpcResponse>(
+        editingNpcId ? `/api/campaigns/${campaign.id}/npcs/${editingNpcId}` : `/api/campaigns/${campaign.id}/npcs`,
+        auth.token,
+        {
+          method: editingNpcId ? 'PUT' : 'POST',
+          body: JSON.stringify(draft),
+        },
+      )
+      setSelectedNpc(saved)
+      setEditingNpcId(null)
+      setDraft(emptyNpcPayload)
+      await loadNpcs()
+      setMessage('NPC salvo.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Erro ao salvar NPC.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function deleteNpc(npcId: string) {
+    if (!isMaster) {
+      return
+    }
+
+    setIsSaving(true)
+    setMessage('')
+
+    try {
+      await apiRequest<null>(`/api/campaigns/${campaign.id}/npcs/${npcId}`, auth.token, { method: 'DELETE' })
+      setSelectedNpc(null)
+      setEditingNpcId(null)
+      await loadNpcs()
+      setMessage('NPC excluído.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Erro ao excluir NPC.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="space-y-4">
+        <form
+          className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:grid-cols-5"
+          onSubmit={(event) => {
+            event.preventDefault()
+            loadNpcs(filters)
+          }}
+        >
+          <TextField label="Nome" onChange={(value) => updateFilter('search', value)} value={filters.search} />
+          <TextField label="Tag" onChange={(value) => updateFilter('tag', value)} value={filters.tag} />
+          <TextField label="Local" onChange={(value) => updateFilter('location', value)} value={filters.location} />
+          <TextField label="Facção" onChange={(value) => updateFilter('faction', value)} value={filters.faction} />
+          <button className="self-end rounded-md border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200" type="submit">
+            Filtrar
+          </button>
+        </form>
+
+        {message && <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">{message}</p>}
+
+        {isLoading ? (
+          <PanelText>Carregando NPCs...</PanelText>
+        ) : npcs.length === 0 ? (
+          <PanelText>Nenhum NPC encontrado.</PanelText>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {npcs.map((npc) => (
+              <button
+                className="rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-700"
+                key={npc.id}
+                onClick={() => setSelectedNpc(npc)}
+                type="button"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold">{npc.name}</h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{npc.alias || npc.occupation || 'NPC'}</p>
+                  </div>
+                  {npc.isImportant && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">Importante</span>}
+                </div>
+                <div className="mt-3 grid gap-1 text-sm text-slate-600 dark:text-slate-300">
+                  <p>{npc.location || 'Sem local'}{npc.faction ? ` - ${npc.faction}` : ''}</p>
+                  <p>{npc.isAlive ? 'Vivo' : 'Morto/desaparecido'} · {campaignNoteVisibilityLabel(npc.visibility)}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <aside className="space-y-4">
+        {selectedNpc && !editingNpcId && (
+          <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold uppercase text-emerald-700 dark:text-emerald-400">{campaignNoteVisibilityLabel(selectedNpc.visibility)}</p>
+                <h3 className="mt-2 text-2xl font-semibold">{selectedNpc.name}</h3>
+                {selectedNpc.alias && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{selectedNpc.alias}</p>}
+              </div>
+              {selectedNpc.canEdit && (
+                <div className="flex gap-2">
+                  <button className="rounded-md border border-slate-300 p-2 dark:border-slate-700" onClick={() => startEditNpc(selectedNpc)} type="button" aria-label="Editar NPC">
+                    <Edit size={17} />
+                  </button>
+                  <button className="rounded-md border border-red-300 p-2 text-red-700 dark:border-red-900 dark:text-red-300" onClick={() => deleteNpc(selectedNpc.id)} type="button" aria-label="Excluir NPC">
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="mt-4 grid gap-2">
+              <InfoRow label="Raça/Espécie" value={selectedNpc.race} />
+              <InfoRow label="Ocupação" value={selectedNpc.occupation} />
+              <InfoRow label="Local" value={selectedNpc.location} />
+              <InfoRow label="Facção" value={selectedNpc.faction} />
+              <InfoRow label="Status" value={selectedNpc.isAlive ? 'Vivo' : 'Morto/desaparecido'} />
+            </div>
+            <TextBlock label="Personalidade" value={selectedNpc.personality} />
+            <TextBlock label="Aparência" value={selectedNpc.appearance} />
+            <TextBlock label="Motivação" value={selectedNpc.motivation} />
+            <TextBlock label="Notas" value={selectedNpc.notes} />
+            {selectedNpc.secrets && <TextBlock label="Segredos" value={selectedNpc.secrets} />}
+            {selectedNpc.statBlockJson && <TextBlock label="Ficha/JSON" value={selectedNpc.statBlockJson} />}
+          </div>
+        )}
+
+        {isMaster && (
+          <form className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900" onSubmit={saveNpc}>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold">{editingNpcId ? 'Editar NPC' : 'Novo NPC'}</h3>
+              <button className="text-sm font-medium text-slate-500 dark:text-slate-400" onClick={startNewNpc} type="button">
+                Limpar
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <TextField label="Nome" onChange={(value) => patchDraft({ name: value })} required value={draft.name} />
+              <TextField label="Apelido" onChange={(value) => patchDraft({ alias: value })} value={draft.alias} />
+              <TextField label="Raça/Espécie" onChange={(value) => patchDraft({ race: value })} value={draft.race} />
+              <TextField label="Ocupação" onChange={(value) => patchDraft({ occupation: value })} value={draft.occupation} />
+              <TextField label="Local" onChange={(value) => patchDraft({ location: value })} value={draft.location} />
+              <TextField label="Facção" onChange={(value) => patchDraft({ faction: value })} value={draft.faction} />
+              <TextField label="Tags" onChange={(value) => patchDraft({ tags: value })} value={draft.tags} />
+              <SimpleSelect
+                label="Visibilidade"
+                onChange={(value) => patchDraft({ visibility: value as Visibility })}
+                options={[
+                  ['MasterOnly', 'Só mestre'],
+                  ['PublicToPlayers', 'Publicada para jogadores'],
+                ]}
+                value={draft.visibility}
+              />
+              <label className="flex items-center gap-2 text-sm">
+                <input checked={draft.isImportant} className="size-4" onChange={(event) => patchDraft({ isImportant: event.target.checked })} type="checkbox" />
+                Importante
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input checked={draft.isAlive} className="size-4" onChange={(event) => patchDraft({ isAlive: event.target.checked })} type="checkbox" />
+                Vivo
+              </label>
+              <TextAreaField label="Personalidade" onChange={(value) => patchDraft({ personality: value })} value={draft.personality} />
+              <TextAreaField label="Aparência" onChange={(value) => patchDraft({ appearance: value })} value={draft.appearance} />
+              <TextAreaField label="Motivação" onChange={(value) => patchDraft({ motivation: value })} value={draft.motivation} />
+              <TextAreaField label="Segredos" onChange={(value) => patchDraft({ secrets: value })} value={draft.secrets} />
+              <TextAreaField label="Notas" onChange={(value) => patchDraft({ notes: value })} value={draft.notes} />
+              <TextAreaField label="Ficha/JSON" onChange={(value) => patchDraft({ statBlockJson: value })} value={draft.statBlockJson} />
+              <button className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:bg-slate-400" disabled={isSaving} type="submit">
+                <Plus size={18} />
+                {isSaving ? 'Salvando...' : 'Salvar NPC'}
+              </button>
+            </div>
+          </form>
+        )}
+      </aside>
+    </section>
+  )
+}
+
+function toNpcPayload(npc: NpcResponse): NpcPayload {
+  return {
+    name: npc.name,
+    alias: npc.alias,
+    race: npc.race,
+    occupation: npc.occupation,
+    location: npc.location,
+    faction: npc.faction,
+    personality: npc.personality,
+    appearance: npc.appearance,
+    motivation: npc.motivation,
+    secrets: npc.secrets ?? '',
+    notes: npc.notes,
+    statBlockJson: npc.statBlockJson,
+    tags: npc.tags,
+    isImportant: npc.isImportant,
+    isAlive: npc.isAlive,
+    visibility: npc.visibility,
+  }
 }
 
 function CampaignMasterDashboard({
@@ -1579,9 +2228,12 @@ const emptyCharacter: CharacterPayload = {
   tokenImageUrl: '',
   totalLevel: 1,
   species: '',
+  raceId: null,
   mainClass: '',
+  classId: null,
   subclass: '',
   background: '',
+  backgroundId: null,
   alignment: '',
   experience: 0,
   inspiration: false,
@@ -1686,6 +2338,9 @@ function CharacterFormPage({ auth }: { auth: AuthContextValue }) {
   const navigate = useNavigate()
   const [payload, setPayload] = useState<CharacterPayload>(emptyCharacter)
   const [campaigns, setCampaigns] = useState<CampaignSummaryResponse[]>([])
+  const [races, setRaces] = useState<RaceResponse[]>([])
+  const [classes, setClasses] = useState<CharacterClassOptionResponse[]>([])
+  const [backgrounds, setBackgrounds] = useState<BackgroundResponse[]>([])
   const [message, setMessage] = useState('')
   const [isLoading, setIsLoading] = useState(isEditing)
   const [isSaving, setIsSaving] = useState(false)
@@ -1696,6 +2351,15 @@ function CharacterFormPage({ auth }: { auth: AuthContextValue }) {
     apiRequest<CampaignSummaryResponse[]>('/api/campaigns', auth.token)
       .then(setCampaigns)
       .catch(() => setCampaigns([]))
+    apiRequest<RaceResponse[]>('/api/races', auth.token)
+      .then(setRaces)
+      .catch(() => setRaces([]))
+    apiRequest<CharacterClassOptionResponse[]>('/api/classes', auth.token)
+      .then(setClasses)
+      .catch(() => setClasses([]))
+    apiRequest<BackgroundResponse[]>('/api/backgrounds', auth.token)
+      .then(setBackgrounds)
+      .catch(() => setBackgrounds([]))
   }, [auth.token])
 
   useEffect(() => {
@@ -1715,6 +2379,21 @@ function CharacterFormPage({ auth }: { auth: AuthContextValue }) {
 
   function patchPayload(patch: Partial<CharacterPayload>) {
     setPayload((current) => ({ ...current, ...patch }))
+  }
+
+  function selectRace(raceId: string) {
+    const race = races.find((item) => item.id === raceId)
+    patchPayload({ raceId: raceId || null, species: race?.name ?? payload.species })
+  }
+
+  function selectClass(classId: string) {
+    const characterClass = classes.find((item) => item.id === classId)
+    patchPayload({ classId: classId || null, mainClass: characterClass?.name ?? payload.mainClass })
+  }
+
+  function selectBackground(backgroundId: string) {
+    const background = backgrounds.find((item) => item.id === backgroundId)
+    patchPayload({ backgroundId: backgroundId || null, background: background?.name ?? payload.background })
   }
 
   async function saveCharacter(event: FormEvent<HTMLFormElement>) {
@@ -1778,9 +2457,12 @@ function CharacterFormPage({ auth }: { auth: AuthContextValue }) {
           <section className="grid gap-4 md:grid-cols-2">
             <TextField label="Nome" onChange={(value) => patchPayload({ name: value })} required value={payload.name} />
             <TextField label="Apelido" onChange={(value) => patchPayload({ nickname: value })} value={payload.nickname ?? ''} />
+            <OptionSelect label="Raça cadastrada" onChange={selectRace} options={races} value={payload.raceId ?? ''} />
             <TextField label="Espécie/Raça" onChange={(value) => patchPayload({ species: value })} value={payload.species} />
+            <OptionSelect label="Classe cadastrada" onChange={selectClass} options={classes} value={payload.classId ?? ''} />
             <TextField label="Classe principal" onChange={(value) => patchPayload({ mainClass: value })} value={payload.mainClass} />
             <TextField label="Subclasse" onChange={(value) => patchPayload({ subclass: value })} value={payload.subclass} />
+            <OptionSelect label="Antecedente cadastrado" onChange={selectBackground} options={backgrounds} value={payload.backgroundId ?? ''} />
             <TextField label="Antecedente" onChange={(value) => patchPayload({ background: value })} value={payload.background} />
             <TextField label="Alinhamento" onChange={(value) => patchPayload({ alignment: value })} value={payload.alignment} />
             <label className="block">
@@ -5718,6 +6400,18 @@ function spellVisibilityLabel(visibility: SpellVisibility) {
   return visibility === 'Private' ? 'Privada' : visibility === 'Campaign' ? 'Campanha' : 'Pública local'
 }
 
+function campaignNoteVisibilityLabel(visibility: Visibility) {
+  const labels: Record<Visibility, string> = {
+    Private: 'Privada',
+    Campaign: 'Campanha',
+    MasterOnly: 'Só mestre',
+    PlayerOnly: 'Só jogador',
+    PublicToPlayers: 'Publicada para jogadores',
+  }
+
+  return labels[visibility]
+}
+
 const featureTypeOptions: { value: FeatureType; label: string }[] = [
   { value: 'Feat', label: 'Talento' },
   { value: 'Class', label: 'Classe' },
@@ -6182,9 +6876,15 @@ function toCharacterPayload(character: CharacterResponse): CharacterPayload {
     tokenImageUrl: character.tokenImageUrl ?? '',
     totalLevel: character.totalLevel,
     species: character.species,
+    raceId: character.raceId ?? null,
+    raceName: character.raceName ?? null,
     mainClass: character.mainClass,
+    classId: character.classId ?? null,
+    className: character.className ?? null,
     subclass: character.subclass,
     background: character.background,
+    backgroundId: character.backgroundId ?? null,
+    backgroundName: character.backgroundName ?? null,
     alignment: character.alignment,
     experience: character.experience,
     inspiration: character.inspiration,
@@ -6214,7 +6914,38 @@ function normalizeCharacterPayload(payload: CharacterPayload): CharacterPayload 
     nickname: payload.nickname || null,
     avatarUrl: payload.avatarUrl || null,
     tokenImageUrl: payload.tokenImageUrl || null,
+    raceId: payload.raceId || null,
+    classId: payload.classId || null,
+    backgroundId: payload.backgroundId || null,
   }
+}
+
+function OptionSelect<T extends { id: string; name: string }>({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string
+  onChange: (value: string) => void
+  options: T[]
+  value: string
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
+      <select
+        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        <option value="">Sem seleção</option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>{option.name}</option>
+        ))}
+      </select>
+    </label>
+  )
 }
 
 function TextAreaField({

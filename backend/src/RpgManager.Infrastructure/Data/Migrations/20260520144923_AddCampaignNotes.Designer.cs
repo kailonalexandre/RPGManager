@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RpgManager.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RpgManager.Infrastructure.Data;
 namespace RpgManager.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260520144923_AddCampaignNotes")]
+    partial class AddCampaignNotes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,48 +24,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("RpgManager.Domain.Entities.Background", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
-
-                    b.Property<bool>("IsHomebrew")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("character varying(160)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("Name");
-
-                    b.ToTable("backgrounds", (string)null);
-                });
 
             modelBuilder.Entity("RpgManager.Domain.Entities.Campaign", b =>
                 {
@@ -242,9 +203,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
-                    b.Property<Guid?>("BackgroundId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Backstory")
                         .IsRequired()
                         .HasMaxLength(4000)
@@ -266,9 +224,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
 
                     b.Property<bool>("CharismaSaveProficient")
                         .HasColumnType("boolean");
-
-                    b.Property<Guid?>("ClassId")
-                        .HasColumnType("uuid");
 
                     b.Property<int>("Constitution")
                         .HasColumnType("integer");
@@ -369,9 +324,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<Guid?>("RaceId")
-                        .HasColumnType("uuid");
-
                     b.Property<int>("Silver")
                         .HasColumnType("integer");
 
@@ -429,13 +381,7 @@ namespace RpgManager.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BackgroundId");
-
                     b.HasIndex("CampaignId");
-
-                    b.HasIndex("ClassId");
-
-                    b.HasIndex("RaceId");
 
                     b.HasIndex("UserId");
 
@@ -529,51 +475,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
                     b.HasIndex("CharacterId");
 
                     b.ToTable("character_attacks", (string)null);
-                });
-
-            modelBuilder.Entity("RpgManager.Domain.Entities.CharacterClass", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
-
-                    b.Property<int>("HitDie")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsHomebrew")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("character varying(160)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("Name");
-
-                    b.ToTable("character_classes", (string)null);
                 });
 
             modelBuilder.Entity("RpgManager.Domain.Entities.CharacterCondition", b =>
@@ -934,159 +835,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
                     b.ToTable("features", (string)null);
                 });
 
-            modelBuilder.Entity("RpgManager.Domain.Entities.Npc", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Alias")
-                        .IsRequired()
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<string>("Appearance")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<Guid>("CampaignId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Faction")
-                        .IsRequired()
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<bool>("IsAlive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsImportant")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Location")
-                        .IsRequired()
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<string>("Motivation")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<string>("Notes")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
-
-                    b.Property<string>("Occupation")
-                        .IsRequired()
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<string>("Personality")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("Race")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<string>("Secrets")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
-
-                    b.Property<string>("StatBlockJson")
-                        .IsRequired()
-                        .HasMaxLength(8000)
-                        .HasColumnType("character varying(8000)");
-
-                    b.Property<string>("Tags")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Visibility")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CampaignId");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("Faction");
-
-                    b.HasIndex("Location");
-
-                    b.HasIndex("Name");
-
-                    b.HasIndex("Visibility");
-
-                    b.ToTable("npcs", (string)null);
-                });
-
-            modelBuilder.Entity("RpgManager.Domain.Entities.Race", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
-
-                    b.Property<bool>("IsHomebrew")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("character varying(160)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("Name");
-
-                    b.ToTable("races", (string)null);
-                });
-
             modelBuilder.Entity("RpgManager.Domain.Entities.Spell", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1286,17 +1034,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
                     b.ToTable("users", (string)null);
                 });
 
-            modelBuilder.Entity("RpgManager.Domain.Entities.Background", b =>
-                {
-                    b.HasOne("RpgManager.Domain.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CreatedByUser");
-                });
-
             modelBuilder.Entity("RpgManager.Domain.Entities.Campaign", b =>
                 {
                     b.HasOne("RpgManager.Domain.Entities.User", "CreatedByUser")
@@ -1348,24 +1085,9 @@ namespace RpgManager.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("RpgManager.Domain.Entities.Character", b =>
                 {
-                    b.HasOne("RpgManager.Domain.Entities.Background", "BackgroundOption")
-                        .WithMany()
-                        .HasForeignKey("BackgroundId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("RpgManager.Domain.Entities.Campaign", "Campaign")
                         .WithMany()
                         .HasForeignKey("CampaignId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("RpgManager.Domain.Entities.CharacterClass", "Class")
-                        .WithMany()
-                        .HasForeignKey("ClassId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("RpgManager.Domain.Entities.Race", "Race")
-                        .WithMany()
-                        .HasForeignKey("RaceId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("RpgManager.Domain.Entities.User", "User")
@@ -1374,13 +1096,7 @@ namespace RpgManager.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("BackgroundOption");
-
                     b.Navigation("Campaign");
-
-                    b.Navigation("Class");
-
-                    b.Navigation("Race");
 
                     b.Navigation("User");
                 });
@@ -1405,17 +1121,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Character");
-                });
-
-            modelBuilder.Entity("RpgManager.Domain.Entities.CharacterClass", b =>
-                {
-                    b.HasOne("RpgManager.Domain.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CreatedByUser");
                 });
 
             modelBuilder.Entity("RpgManager.Domain.Entities.CharacterCondition", b =>
@@ -1524,36 +1229,6 @@ namespace RpgManager.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Campaign");
-
-                    b.Navigation("CreatedByUser");
-                });
-
-            modelBuilder.Entity("RpgManager.Domain.Entities.Npc", b =>
-                {
-                    b.HasOne("RpgManager.Domain.Entities.Campaign", "Campaign")
-                        .WithMany()
-                        .HasForeignKey("CampaignId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("RpgManager.Domain.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Campaign");
-
-                    b.Navigation("CreatedByUser");
-                });
-
-            modelBuilder.Entity("RpgManager.Domain.Entities.Race", b =>
-                {
-                    b.HasOne("RpgManager.Domain.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("CreatedByUser");
                 });

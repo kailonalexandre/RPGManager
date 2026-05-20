@@ -72,6 +72,93 @@ public sealed class PermissionServiceTests
         Assert.True(await service.CanViewSpellAsync(publicSpell.Id, outsider.Id, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Campaign_permission_returns_role_and_default_visibility()
+    {
+        await using var dbContext = CreateDbContext();
+        var (master, player, outsider, campaign) = await SeedCampaignAsync(dbContext);
+        var service = new CampaignPermissionService(dbContext);
+
+        Assert.Equal(CampaignRole.Master, await service.GetCampaignRoleAsync(campaign.Id, master.Id, CancellationToken.None));
+        Assert.Equal(CampaignRole.Player, await service.GetCampaignRoleAsync(campaign.Id, player.Id, CancellationToken.None));
+        Assert.Null(await service.GetCampaignRoleAsync(campaign.Id, outsider.Id, CancellationToken.None));
+        Assert.Equal(Visibility.MasterOnly, await service.GetDefaultVisibilityAsync(campaign.Id, master.Id, CancellationToken.None));
+        Assert.Equal(Visibility.Private, await service.GetDefaultVisibilityAsync(campaign.Id, player.Id, CancellationToken.None));
+        Assert.Null(await service.GetDefaultVisibilityAsync(campaign.Id, outsider.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Campaign_scoped_visibility_keeps_master_and_player_access_separated()
+    {
+        await using var dbContext = CreateDbContext();
+        var (master, player, outsider, campaign) = await SeedCampaignAsync(dbContext);
+        var service = new CampaignPermissionService(dbContext);
+
+        Assert.True(await service.CanViewCampaignScopedContentAsync(
+            campaign.Id,
+            player.Id,
+            Visibility.Private,
+            master.Id,
+            CancellationToken.None));
+        Assert.True(await service.CanViewCampaignScopedContentAsync(
+            campaign.Id,
+            player.Id,
+            Visibility.Private,
+            player.Id,
+            CancellationToken.None));
+        Assert.False(await service.CanViewCampaignScopedContentAsync(
+            campaign.Id,
+            master.Id,
+            Visibility.MasterOnly,
+            player.Id,
+            CancellationToken.None));
+        Assert.True(await service.CanViewCampaignScopedContentAsync(
+            campaign.Id,
+            master.Id,
+            Visibility.PublicToPlayers,
+            player.Id,
+            CancellationToken.None));
+        Assert.False(await service.CanViewCampaignScopedContentAsync(
+            campaign.Id,
+            master.Id,
+            Visibility.PublicToPlayers,
+            outsider.Id,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Campaign_scoped_editing_allows_master_or_owner_private_content()
+    {
+        await using var dbContext = CreateDbContext();
+        var (master, player, outsider, campaign) = await SeedCampaignAsync(dbContext);
+        var service = new CampaignPermissionService(dbContext);
+
+        Assert.True(await service.CanEditCampaignScopedContentAsync(
+            campaign.Id,
+            player.Id,
+            Visibility.Private,
+            master.Id,
+            CancellationToken.None));
+        Assert.True(await service.CanEditCampaignScopedContentAsync(
+            campaign.Id,
+            player.Id,
+            Visibility.Private,
+            player.Id,
+            CancellationToken.None));
+        Assert.False(await service.CanEditCampaignScopedContentAsync(
+            campaign.Id,
+            master.Id,
+            Visibility.MasterOnly,
+            player.Id,
+            CancellationToken.None));
+        Assert.False(await service.CanEditCampaignScopedContentAsync(
+            campaign.Id,
+            player.Id,
+            Visibility.Private,
+            outsider.Id,
+            CancellationToken.None));
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

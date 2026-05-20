@@ -13,9 +13,15 @@ public sealed class Character
     public string? TokenImageUrl { get; set; }
     public int TotalLevel { get; set; } = 1;
     public string Species { get; set; } = string.Empty;
+    public Guid? RaceId { get; set; }
+    public Race? Race { get; set; }
     public string MainClass { get; set; } = string.Empty;
+    public Guid? ClassId { get; set; }
+    public CharacterClass? Class { get; set; }
     public string Subclass { get; set; } = string.Empty;
     public string Background { get; set; } = string.Empty;
+    public Guid? BackgroundId { get; set; }
+    public Background? BackgroundOption { get; set; }
     public string Alignment { get; set; } = string.Empty;
     public int Experience { get; set; }
     public bool Inspiration { get; set; }

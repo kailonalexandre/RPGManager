@@ -8,6 +8,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<User> Users => Set<User>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignMember> CampaignMembers => Set<CampaignMember>();
+    public DbSet<CampaignNote> CampaignNotes => Set<CampaignNote>();
+    public DbSet<Npc> Npcs => Set<Npc>();
     public DbSet<Character> Characters => Set<Character>();
     public DbSet<CharacterSkill> CharacterSkills => Set<CharacterSkill>();
     public DbSet<CharacterAttack> CharacterAttacks => Set<CharacterAttack>();
@@ -20,6 +22,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CharacterFeature> CharacterFeatures => Set<CharacterFeature>();
     public DbSet<Spell> Spells => Set<Spell>();
     public DbSet<Feature> Features => Set<Feature>();
+    public DbSet<Race> Races => Set<Race>();
+    public DbSet<CharacterClass> CharacterClasses => Set<CharacterClass>();
+    public DbSet<Background> Backgrounds => Set<Background>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -111,6 +116,99 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<CampaignNote>(entity =>
+        {
+            entity.ToTable("campaign_notes");
+            entity.HasKey(note => note.Id);
+
+            entity.Property(note => note.Title)
+                .HasMaxLength(180)
+                .IsRequired();
+
+            entity.Property(note => note.ContentMarkdown)
+                .HasMaxLength(20000)
+                .IsRequired();
+
+            entity.Property(note => note.Tags)
+                .HasMaxLength(500)
+                .IsRequired();
+
+            entity.Property(note => note.Visibility)
+                .HasConversion<string>()
+                .HasMaxLength(40)
+                .IsRequired();
+
+            entity.Property(note => note.LinkedEntityType)
+                .HasMaxLength(80);
+
+            entity.Property(note => note.ExternalProvider)
+                .HasConversion<string>()
+                .HasMaxLength(40)
+                .IsRequired();
+
+            entity.Property(note => note.ExternalId)
+                .HasMaxLength(180);
+
+            entity.HasIndex(note => note.CampaignId);
+            entity.HasIndex(note => note.OwnerUserId);
+            entity.HasIndex(note => note.Visibility);
+            entity.HasIndex(note => note.Title);
+            entity.HasIndex(note => note.LinkedEntityType);
+            entity.HasIndex(note => note.LinkedEntityId);
+
+            entity.HasOne(note => note.Campaign)
+                .WithMany()
+                .HasForeignKey(note => note.CampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(note => note.OwnerUser)
+                .WithMany()
+                .HasForeignKey(note => note.OwnerUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Npc>(entity =>
+        {
+            entity.ToTable("npcs");
+            entity.HasKey(npc => npc.Id);
+
+            entity.Property(npc => npc.Name).HasMaxLength(180).IsRequired();
+            entity.Property(npc => npc.Alias).HasMaxLength(180).IsRequired();
+            entity.Property(npc => npc.Race).HasMaxLength(120).IsRequired();
+            entity.Property(npc => npc.Occupation).HasMaxLength(180).IsRequired();
+            entity.Property(npc => npc.Location).HasMaxLength(180).IsRequired();
+            entity.Property(npc => npc.Faction).HasMaxLength(180).IsRequired();
+            entity.Property(npc => npc.Personality).HasMaxLength(2000).IsRequired();
+            entity.Property(npc => npc.Appearance).HasMaxLength(2000).IsRequired();
+            entity.Property(npc => npc.Motivation).HasMaxLength(2000).IsRequired();
+            entity.Property(npc => npc.Secrets).HasMaxLength(4000).IsRequired();
+            entity.Property(npc => npc.Notes).HasMaxLength(4000).IsRequired();
+            entity.Property(npc => npc.StatBlockJson).HasMaxLength(8000).IsRequired();
+            entity.Property(npc => npc.Tags).HasMaxLength(500).IsRequired();
+
+            entity.Property(npc => npc.Visibility)
+                .HasConversion<string>()
+                .HasMaxLength(40)
+                .IsRequired();
+
+            entity.HasIndex(npc => npc.CampaignId);
+            entity.HasIndex(npc => npc.Name);
+            entity.HasIndex(npc => npc.Location);
+            entity.HasIndex(npc => npc.Faction);
+            entity.HasIndex(npc => npc.Visibility);
+            entity.HasIndex(npc => npc.CreatedByUserId);
+
+            entity.HasOne(npc => npc.Campaign)
+                .WithMany()
+                .HasForeignKey(npc => npc.CampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(npc => npc.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(npc => npc.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Character>(entity =>
         {
             entity.ToTable("characters");
@@ -140,6 +238,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
             entity.HasIndex(character => character.UserId);
             entity.HasIndex(character => character.CampaignId);
+            entity.HasIndex(character => character.RaceId);
+            entity.HasIndex(character => character.ClassId);
+            entity.HasIndex(character => character.BackgroundId);
 
             entity.HasOne(character => character.User)
                 .WithMany()
@@ -149,6 +250,21 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(character => character.Campaign)
                 .WithMany()
                 .HasForeignKey(character => character.CampaignId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(character => character.Race)
+                .WithMany()
+                .HasForeignKey(character => character.RaceId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(character => character.Class)
+                .WithMany()
+                .HasForeignKey(character => character.ClassId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(character => character.BackgroundOption)
+                .WithMany()
+                .HasForeignKey(character => character.BackgroundId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -517,6 +633,51 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(feature => feature.Campaign)
                 .WithMany()
                 .HasForeignKey(feature => feature.CampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Race>(entity =>
+        {
+            entity.ToTable("races");
+            entity.HasKey(race => race.Id);
+            entity.Property(race => race.Name).HasMaxLength(180).IsRequired();
+            entity.Property(race => race.Description).HasMaxLength(4000).IsRequired();
+            entity.Property(race => race.Source).HasMaxLength(160).IsRequired();
+            entity.HasIndex(race => race.Name);
+            entity.HasIndex(race => race.CreatedByUserId);
+            entity.HasOne(race => race.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(race => race.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CharacterClass>(entity =>
+        {
+            entity.ToTable("character_classes");
+            entity.HasKey(characterClass => characterClass.Id);
+            entity.Property(characterClass => characterClass.Name).HasMaxLength(180).IsRequired();
+            entity.Property(characterClass => characterClass.Description).HasMaxLength(4000).IsRequired();
+            entity.Property(characterClass => characterClass.Source).HasMaxLength(160).IsRequired();
+            entity.HasIndex(characterClass => characterClass.Name);
+            entity.HasIndex(characterClass => characterClass.CreatedByUserId);
+            entity.HasOne(characterClass => characterClass.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(characterClass => characterClass.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Background>(entity =>
+        {
+            entity.ToTable("backgrounds");
+            entity.HasKey(background => background.Id);
+            entity.Property(background => background.Name).HasMaxLength(180).IsRequired();
+            entity.Property(background => background.Description).HasMaxLength(4000).IsRequired();
+            entity.Property(background => background.Source).HasMaxLength(160).IsRequired();
+            entity.HasIndex(background => background.Name);
+            entity.HasIndex(background => background.CreatedByUserId);
+            entity.HasOne(background => background.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(background => background.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
