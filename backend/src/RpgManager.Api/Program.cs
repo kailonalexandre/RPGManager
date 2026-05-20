@@ -5,14 +5,7 @@ using RpgManager.Infrastructure;
 using RpgManager.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString =
-    builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? builder.Configuration["DATABASE_URL"]
-    ?? builder.Configuration["ConnectionStrings__DefaultConnection"];
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString));
-    
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
