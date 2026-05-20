@@ -26,7 +26,7 @@ Fluxo típico:
 - React + TypeScript + Vite.
 - Rotas protegidas por token salvo em `localStorage`.
 - Tema claro/escuro salvo em `localStorage`.
-- API base configurada por `VITE_API_URL`.
+- API base configurada por `VITE_API_BASE_URL`.
 - PWA básico via `manifest.webmanifest` e `sw.js`.
 - Exportação PDF gerada no navegador por página de impressão.
 

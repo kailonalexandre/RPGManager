@@ -35,7 +35,7 @@ Backend em camadas:
 Frontend:
 
 - SPA React em `frontend/src`.
-- API consumida via `VITE_API_URL`.
+- API consumida via `VITE_API_BASE_URL`.
 - Estado local com React hooks.
 - PDF gerado no navegador via página de impressão.
 - PWA preparado com manifest, ícones e service worker em build de produção.
@@ -85,16 +85,161 @@ cp .env.example .env
 
 Principais variáveis:
 
+- `DATABASE_URL`: URL PostgreSQL do Neon. Use o formato `postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require`.
+- `NODE_ENV`: ambiente do frontend/build Node.
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`: banco local.
 - `API_PORT`: porta externa da API no Docker.
 - `FRONTEND_PORT`: porta externa do frontend no Docker.
-- `FRONTEND_URL`: origem do frontend em desenvolvimento para CORS.
-- `VITE_API_URL`: URL da API embutida no build do frontend.
+- `ALLOWED_ORIGINS`: origens permitidas no CORS da API, separadas por vírgula.
+- `VITE_API_BASE_URL`: URL base da API embutida no build do frontend, incluindo `/api`.
 - `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_SECRET`, `JWT_EXPIRATION_MINUTES`: autenticação JWT.
 - `LOCAL_FILE_STORAGE_*`: diretório, rota pública e tamanho máximo dos uploads.
 - `OPEN5E_*`: configuração do importador de magias SRD do Open5e.
 
 Em produção, troque `JWT_SECRET` por um segredo forte e não reutilize a senha padrão do PostgreSQL.
+
+## Deploy Neon + Vercel
+
+Este repositório é dividido em duas aplicações:
+
+- Backend: API ASP.NET Core com Entity Framework Core e PostgreSQL via Npgsql.
+- Frontend: React/Vite, pronto para deploy estático na Vercel.
+
+A Vercel deve hospedar somente o frontend. A API ASP.NET Core tradicional deve rodar em um host compatível com .NET ou Docker, como Render, Railway, Azure, Fly.io ou VPS. Depois de publicar a API, configure `VITE_API_BASE_URL` na Vercel apontando para a URL pública da API com `/api` no final.
+
+1. Crie o banco no Neon:
+
+   - Crie um projeto no Neon.
+   - Copie a connection string PostgreSQL.
+   - Use uma URL com SSL obrigatório, neste formato fictício:
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require"
+```
+
+2. Configure as variáveis do backend:
+
+- `DATABASE_URL`: connection string do Neon no formato acima.
+- `ConnectionStrings__DefaultConnection`: alternativa compatível com Npgsql. Use uma das duas variáveis, não precisa das duas.
+- `ASPNETCORE_URLS=http://+:8080`: porta esperada pelo Dockerfile de produção.
+- `ASPNETCORE_ENVIRONMENT=Production`
+- `Jwt__Issuer=RpgManager`
+- `Jwt__Audience=RpgManager`
+- `Jwt__Secret`: segredo forte com pelo menos 32 caracteres.
+- `AllowedOrigins=https://seu-frontend.vercel.app,http://localhost:5173`: origens liberadas para CORS, separadas por vírgula.
+- `LocalFileStorage__RootPath=/app/wwwroot/uploads`
+- `LocalFileStorage__PublicBasePath=/uploads`
+- `LocalFileStorage__MaxBytes=5242880`
+
+Não versionar `.env`. Ele já está listado no `.gitignore`.
+
+3. Aplique migrations no Neon:
+
+```bash
+export DATABASE_URL="postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require"
+dotnet tool restore
+dotnet ef database update \
+  --project backend/src/RpgManager.Infrastructure/RpgManager.Infrastructure.csproj \
+  --startup-project backend/src/RpgManager.Api/RpgManager.Api.csproj
+```
+
+A API também executa `Database.Migrate()` ao iniciar. Para produção, prefira rodar o comando de migration no pipeline ou manualmente antes de liberar tráfego para a nova versão.
+
+4. Hospede o backend via Docker:
+
+O Dockerfile do backend fica em `backend/Dockerfile`, publica em Release e expõe a porta interna `8080`.
+
+Build local da imagem:
+
+```bash
+docker build -t rpgmanager-api ./backend
+```
+
+Execução local apontando para Neon:
+
+```bash
+docker run --rm -p 5000:8080 \
+  -e ASPNETCORE_URLS="http://+:8080" \
+  -e ASPNETCORE_ENVIRONMENT="Production" \
+  -e DATABASE_URL="postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require" \
+  -e Jwt__Issuer="RpgManager" \
+  -e Jwt__Audience="RpgManager" \
+  -e Jwt__Secret="change-this-development-secret-with-at-least-32-chars" \
+  -e AllowedOrigins="http://localhost:5173" \
+  rpgmanager-api
+```
+
+No Render, Railway, Azure ou Fly.io, aponte o serviço para `backend/Dockerfile`, configure as variáveis acima e use a porta interna `8080`.
+
+5. Configure o frontend na Vercel:
+
+- Root Directory: `.`
+- Build Command: `cd frontend && npm run build`
+- Output Directory: `frontend/dist`
+- Install Command: `cd frontend && npm ci`
+- Environment Variable: `VITE_API_BASE_URL=https://sua-api-publica.example.com/api`
+
+O `vercel.json` na raiz já registra esses comandos para o monorepo.
+
+6. Rode localmente usando Neon:
+
+Backend:
+
+```bash
+export DATABASE_URL="postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require"
+export Jwt__Issuer="RpgManager"
+export Jwt__Audience="RpgManager"
+export Jwt__Secret="change-this-development-secret-with-at-least-32-chars"
+export AllowedOrigins="http://localhost:5173"
+export LocalFileStorage__RootPath="$(pwd)/backend/uploads"
+export LocalFileStorage__PublicBasePath="/uploads"
+export LocalFileStorage__MaxBytes="5242880"
+dotnet run --project backend/src/RpgManager.Api/RpgManager.Api.csproj
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+VITE_API_BASE_URL=http://localhost:5000/api npm run dev
+```
+
+7. Configure CORS:
+
+No backend em produção, `AllowedOrigins` deve conter a origem exata do frontend, por exemplo:
+
+```bash
+AllowedOrigins="https://rpg-manager.vercel.app"
+```
+
+Para liberar mais de uma origem, separe por vírgula:
+
+```bash
+AllowedOrigins="https://rpg-manager.vercel.app,http://localhost:5173"
+```
+
+8. Checklist pós-deploy:
+
+- Acesse `https://sua-api-publica.example.com/api/health` e confirme `status: ok`.
+- Acesse o frontend na Vercel.
+- Faça cadastro/login.
+- Crie uma campanha.
+- Crie um personagem.
+- Faça upload de imagem se o host tiver storage persistente configurado.
+- Confirme no console do navegador que não há erro de CORS.
+- Confirme que `DATABASE_URL` e `Jwt__Secret` não aparecem em logs.
+
+9. Rode migrations em produção quando houver mudanças de schema:
+
+```bash
+export DATABASE_URL="postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require"
+dotnet ef database update \
+  --project backend/src/RpgManager.Infrastructure/RpgManager.Infrastructure.csproj \
+  --startup-project backend/src/RpgManager.Api/RpgManager.Api.csproj
+```
+
+Nunca coloque a connection string real no código, no README ou em logs. Use apenas variáveis de ambiente.
 
 ## Rodar com Docker Compose
 
@@ -126,7 +271,7 @@ POSTGRES_PORT=15432 docker compose up --build
 Se quiser alterar as portas externas da aplicação:
 
 ```bash
-API_PORT=15000 FRONTEND_PORT=18080 POSTGRES_PORT=15432 VITE_API_URL=http://localhost:15000 docker compose up --build
+API_PORT=15000 FRONTEND_PORT=18080 POSTGRES_PORT=15432 VITE_API_BASE_URL=http://localhost:15000/api docker compose up --build
 ```
 
 Parar os containers:
@@ -156,10 +301,16 @@ export ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=r
 export Jwt__Issuer="RpgManager"
 export Jwt__Audience="RpgManager"
 export Jwt__Secret="change-this-development-secret-with-at-least-32-chars"
-export Cors__AllowedOrigins__0="http://localhost:5173"
+export AllowedOrigins="http://localhost:5173"
 export LocalFileStorage__RootPath="$(pwd)/backend/uploads"
 export LocalFileStorage__PublicBasePath="/uploads"
 export LocalFileStorage__MaxBytes="5242880"
+```
+
+Para usar Neon em vez do PostgreSQL local, defina `DATABASE_URL` e omita `ConnectionStrings__DefaultConnection`:
+
+```bash
+export DATABASE_URL="postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require"
 ```
 
 3. Rode a API:
@@ -183,7 +334,7 @@ Frontend dev: http://localhost:5173.
 Para apontar para outra API:
 
 ```bash
-VITE_API_URL=http://localhost:5000 npm run dev
+VITE_API_BASE_URL=http://localhost:5000/api npm run dev
 ```
 
 Build de produção:
@@ -200,7 +351,7 @@ A API executa `Database.Migrate()` ao iniciar. Em desenvolvimento, também é po
 
 ```bash
 dotnet tool restore
-dotnet dotnet-ef database update \
+dotnet ef database update \
   --project backend/src/RpgManager.Infrastructure/RpgManager.Infrastructure.csproj \
   --startup-project backend/src/RpgManager.Api/RpgManager.Api.csproj
 ```
@@ -208,7 +359,7 @@ dotnet dotnet-ef database update \
 Criar nova migration:
 
 ```bash
-dotnet dotnet-ef migrations add NomeDaMigration \
+dotnet ef migrations add NomeDaMigration \
   --project backend/src/RpgManager.Infrastructure/RpgManager.Infrastructure.csproj \
   --startup-project backend/src/RpgManager.Api/RpgManager.Api.csproj \
   --output-dir Data/Migrations

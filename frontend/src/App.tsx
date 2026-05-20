@@ -531,7 +531,8 @@ type AuthContextValue = {
   logout: () => void
 }
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000/api').replace(/\/$/, '')
+const API_ORIGIN = new URL(API_BASE_URL).origin
 const TOKEN_KEY = 'rpgmanager.token'
 const THEME_KEY = 'rpgmanager.theme'
 
@@ -543,8 +544,13 @@ const navigation = [
   { label: 'Talentos', path: '/features', icon: Sparkles },
 ]
 
+function apiUrl(path: string) {
+  const normalizedPath = path.startsWith('/api/') ? path.slice(4) : path
+  return `${API_BASE_URL}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`
+}
+
 async function apiRequest<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -572,7 +578,7 @@ async function safeApiRequest<T>(path: string, token: string, fallback: T): Prom
 }
 
 async function apiFormRequest<T>(path: string, token: string, formData: FormData, method = 'POST'): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(apiUrl(path), {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -609,7 +615,7 @@ function App() {
       return
     }
 
-    fetch(`${API_URL}/api/auth/me`, {
+    fetch(apiUrl('/api/auth/me'), {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (response) => {
@@ -718,7 +724,7 @@ function LoginPage({ auth }: { auth: AuthContextValue }) {
     const payload = mode === 'register' ? { name, email, password, profile } : { email, password }
 
     try {
-      const response = await fetch(`${API_URL}/api/auth/${mode}`, {
+      const response = await fetch(apiUrl(`/api/auth/${mode}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -4341,7 +4347,7 @@ function AssetUploadCard({
 }
 
 function assetUrl(fileUrl: string) {
-  return fileUrl.startsWith('http') ? fileUrl : `${API_URL}${fileUrl}`
+  return fileUrl.startsWith('http') ? fileUrl : `${API_ORIGIN}${fileUrl}`
 }
 
 const itemTypeOptions: Array<{ label: string; value: ItemType }> = [
